@@ -10,7 +10,7 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build:
+  rust:
     strategy:
       matrix:
         os: [windows-latest, macos-latest, ubuntu-latest]
@@ -26,6 +26,9 @@ jobs:
             ext: ""
 
     runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: rust
 
     steps:
       - uses: actions/checkout@v4
@@ -45,14 +48,47 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: keep-awake-${{ matrix.os }}
-          path: target/${{ matrix.target }}/release/keep-awake${{ matrix.ext }}
+          name: keep-awake-rust-${{ matrix.os }}
+          path: rust/target/${{ matrix.target }}/release/keep-awake${{ matrix.ext }}
 
-  check:
+  rust-check:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: rust
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo check --all-targets
       - run: cargo fmt --all --check
       - run: cargo clippy --all-targets -- -D warnings
+
+  go:
+    strategy:
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: go
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - name: Install Linux dependencies
+        if: matrix.os == 'ubuntu-latest'
+        run: sudo apt-get update && sudo apt-get install -y libgtk-3-dev libayatana-appindicator3-dev
+
+      - name: Build
+        run: go build -ldflags="-H=windowsgui" -o keep-awake${{ matrix.os == 'windows-latest' && '.exe' || '' }} .
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: keep-awake-go-${{ matrix.os }}
+          path: go/keep-awake${{ matrix.os == 'windows-latest' && '.exe' || '' }}

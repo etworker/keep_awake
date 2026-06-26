@@ -1,4 +1,7 @@
-/target
+/rust/target
+/rust/icon.ico
+/go/keep-awake
+/go/keep-awake.exe
 *.swp
 *.swo
 .idea/

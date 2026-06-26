@@ -33,6 +33,34 @@ impl TrayHandle {
     pub fn set_autostart_checked(&self, checked: bool) {
         self.autostart.set_checked(checked);
     }
+
+    pub fn show_notification(&self, title: &str, body: &str) {
+        #[cfg(windows)]
+        {
+            use windows_sys::Win32::UI::Shell;
+            use windows_sys::Win32::UI::WindowsAndMessaging::FindWindowW;
+            unsafe {
+                let hwnd = FindWindowW(windows_sys::core::w!("tray_icon_app"), std::ptr::null());
+                if hwnd.is_null() {
+                    return;
+                }
+                let mut nid: Shell::NOTIFYICONDATAW = std::mem::zeroed();
+                nid.cbSize = std::mem::size_of::<Shell::NOTIFYICONDATAW>() as u32;
+                nid.hWnd = hwnd;
+                nid.uID = 1;
+                nid.uFlags = Shell::NIF_INFO;
+                let title16: Vec<u16> = title.encode_utf16().chain([0]).collect();
+                let body16: Vec<u16> = body.encode_utf16().chain([0]).collect();
+                let mut i = 0;
+                for &c in &title16 { nid.szInfoTitle[i] = c; i += 1; if i >= 63 { break; } }
+                i = 0;
+                for &c in &body16 { nid.szInfo[i] = c; i += 1; if i >= 255 { break; } }
+                Shell::Shell_NotifyIconW(Shell::NIM_MODIFY, &mut nid);
+            }
+        }
+        #[cfg(not(windows))]
+        let _ = (title, body);
+    }
 }
 
 pub fn setup(config: &Config) -> (TrayHandle, MenuId, MenuId, MenuId, MenuId) {

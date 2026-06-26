@@ -19,7 +19,10 @@ pub fn detect() -> Lang {
         // Windows: try PowerShell to get culture
         #[cfg(windows)]
         {
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x08000000;
             let out = std::process::Command::new("powershell")
+                .creation_flags(CREATE_NO_WINDOW)
                 .args(["-NoProfile", "-Command", "(Get-Culture).Name"])
                 .output()
                 .ok();

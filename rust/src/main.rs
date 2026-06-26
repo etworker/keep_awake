@@ -16,16 +16,9 @@ use std::time::Duration;
 use tray_icon::menu::MenuEvent;
 use tray_icon::{MouseButton, TrayIconEvent};
 
-#[cfg(windows)]
-unsafe extern "system" {
-    fn FreeConsole() -> i32;
-}
-
 fn main() {
     #[cfg(windows)]
-    unsafe {
-        FreeConsole();
-    }
+    ensure_single_instance();
     lang::detect();
 
     let config = Arc::new(Mutex::new(Config::load()));
@@ -41,6 +34,11 @@ fn main() {
         let cfg = config.lock().unwrap();
         tray::setup(&cfg)
     };
+
+    handle.show_notification(
+        tr!("Keep Awake", "保持唤醒"),
+        tr!("Running in background", "已在后台运行"),
+    );
 
     {
         let cfg = config.lock().unwrap();
@@ -193,6 +191,23 @@ fn pump_messages() {
 
 #[cfg(not(windows))]
 fn pump_messages() {}
+
+#[cfg(windows)]
+fn ensure_single_instance() {
+    unsafe {
+        let name = windows_sys::core::w!("keep-awake-6a1b2c3d");
+        let handle = windows_sys::Win32::System::Threading::CreateMutexW(
+            std::ptr::null(),
+            true.into(),
+            name,
+        );
+        let already = windows_sys::Win32::Foundation::GetLastError()
+            == windows_sys::Win32::Foundation::ERROR_ALREADY_EXISTS;
+        if handle.is_null() || already {
+            std::process::exit(0);
+        }
+    }
+}
 
 mod auto_start {
     pub fn enable(exe: &std::path::Path) {
