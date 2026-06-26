@@ -1,3 +1,5 @@
+#[macro_use]
+mod lang;
 mod config;
 mod inhibit;
 mod mouse;
@@ -8,12 +10,13 @@ use inhibit::InhibitGuard;
 use mouse::MouseJiggler;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::thread;
 use std::time::Duration;
 use tray_icon::menu::MenuEvent;
 use tray_icon::{MouseButton, TrayIconEvent};
 
 fn main() {
+    lang::detect();
+
     let config = Arc::new(Mutex::new(Config::load()));
     let enabled = Arc::new(AtomicBool::new(config.lock().unwrap().enabled));
     let mouse_mode = Arc::new(AtomicBool::new(
@@ -39,6 +42,8 @@ fn main() {
     let tray_rx = TrayIconEvent::receiver();
 
     loop {
+        pump_messages();
+
         while let Ok(event) = menu_rx.try_recv() {
             let id = event.id();
             if *id == quit_id {
@@ -76,7 +81,7 @@ fn main() {
             }
         }
 
-        thread::sleep(Duration::from_millis(100));
+        std::thread::sleep(Duration::from_millis(10));
     }
 }
 
@@ -144,6 +149,39 @@ fn apply_autostart(enabled: bool) {
         auto_start::disable();
     }
 }
+
+#[cfg(windows)]
+fn pump_messages() {
+    use std::ffi::c_void;
+    #[repr(C)]
+    struct MSG {
+        hwnd: *mut c_void,
+        message: u32,
+        w_param: usize,
+        l_param: isize,
+        time: u32,
+        pt: POINT,
+    }
+    #[repr(C)]
+    struct POINT { x: i32, y: i32 }
+    const PM_REMOVE: u32 = 1;
+    #[link(name = "user32")]
+    unsafe extern "system" {
+        fn PeekMessageW(msg: *mut MSG, hwnd: *mut c_void, msg_filter_min: u32, msg_filter_max: u32, remove_msg: u32) -> i32;
+        fn TranslateMessage(msg: *const MSG) -> i32;
+        fn DispatchMessageW(msg: *const MSG) -> i32;
+    }
+    unsafe {
+        let mut msg = std::mem::zeroed::<MSG>();
+        while PeekMessageW(&mut msg, std::ptr::null_mut(), 0, 0, PM_REMOVE) != 0 {
+            TranslateMessage(&msg);
+            DispatchMessageW(&msg);
+        }
+    }
+}
+
+#[cfg(not(windows))]
+fn pump_messages() {}
 
 mod auto_start {
     pub fn enable(exe: &std::path::Path) {
