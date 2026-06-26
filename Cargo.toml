@@ -24,7 +24,7 @@ core-foundation = "0.10"
 zbus = "5"
 
 [target.'cfg(windows)'.build-dependencies]
-winres = "0.1"
+ico = "0.3"
 
 [profile.release]
 opt-level = "z"

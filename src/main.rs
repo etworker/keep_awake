@@ -16,7 +16,16 @@ use std::time::Duration;
 use tray_icon::menu::MenuEvent;
 use tray_icon::{MouseButton, TrayIconEvent};
 
+#[cfg(windows)]
+unsafe extern "system" {
+    fn FreeConsole() -> i32;
+}
+
 fn main() {
+    #[cfg(windows)]
+    unsafe {
+        FreeConsole();
+    }
     lang::detect();
 
     let config = Arc::new(Mutex::new(Config::load()));
