@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 use tray_icon::menu::MenuEvent;
-use tray_icon::TrayIconEvent;
+use tray_icon::{MouseButton, TrayIconEvent};
 
 fn main() {
     let config = Arc::new(Mutex::new(Config::load()));
@@ -31,12 +31,12 @@ fn main() {
     {
         let cfg = config.lock().unwrap();
         if cfg.enabled {
-            activate(&cfg, &guard, &jiggler, &enabled, &mouse_mode);
+            activate(&cfg, &guard, &jiggler, &enabled, &mouse_mode, &handle);
         }
     }
 
     let menu_rx = MenuEvent::receiver();
-    let _tray_rx = TrayIconEvent::receiver();
+    let tray_rx = TrayIconEvent::receiver();
 
     loop {
         while let Ok(event) = menu_rx.try_recv() {
@@ -46,18 +46,7 @@ fn main() {
                 jiggler.lock().unwrap().take();
                 return;
             } else if *id == toggle_id {
-                let mut cfg = config.lock().unwrap();
-                let new = !cfg.enabled;
-                cfg.enabled = new;
-                cfg.save().ok();
-                enabled.store(new, Ordering::Relaxed);
-                if new {
-                    activate(&cfg, &guard, &jiggler, &enabled, &mouse_mode);
-                } else {
-                    guard.lock().unwrap().take();
-                    jiggler.lock().unwrap().take();
-                }
-                handle.set_toggle_checked(new);
+                toggle_enabled(&config, &guard, &jiggler, &enabled, &mouse_mode, &handle);
             } else if *id == mode_id {
                 let mut cfg = config.lock().unwrap();
                 cfg.mode = match cfg.mode {
@@ -70,7 +59,7 @@ fn main() {
                 if cfg.enabled {
                     guard.lock().unwrap().take();
                     jiggler.lock().unwrap().take();
-                    activate(&cfg, &guard, &jiggler, &enabled, &mouse_mode);
+                    activate(&cfg, &guard, &jiggler, &enabled, &mouse_mode, &handle);
                 }
             } else if *id == autostart_id {
                 let mut cfg = config.lock().unwrap();
@@ -81,8 +70,44 @@ fn main() {
             }
         }
 
+        while let Ok(event) = tray_rx.try_recv() {
+            if matches!(event, TrayIconEvent::Click { button: MouseButton::Left, .. }) {
+                toggle_enabled(&config, &guard, &jiggler, &enabled, &mouse_mode, &handle);
+            }
+        }
+
         thread::sleep(Duration::from_millis(100));
     }
+}
+
+fn toggle_enabled(
+    config: &Arc<Mutex<Config>>,
+    guard: &Arc<Mutex<Option<InhibitGuard>>>,
+    jiggler: &Arc<Mutex<Option<MouseJiggler>>>,
+    enabled: &Arc<AtomicBool>,
+    mouse_mode: &Arc<AtomicBool>,
+    handle: &tray::TrayHandle,
+) {
+    let mut cfg = config.lock().unwrap();
+    let new = !cfg.enabled;
+    cfg.enabled = new;
+    cfg.save().ok();
+    enabled.store(new, Ordering::Relaxed);
+
+    if new {
+        let ok = activate(&cfg, guard, jiggler, enabled, mouse_mode, handle);
+        if !ok {
+            cfg.enabled = false;
+            cfg.save().ok();
+            enabled.store(false, Ordering::Relaxed);
+            handle.set_toggle_checked(false);
+            return;
+        }
+    } else {
+        guard.lock().unwrap().take();
+        jiggler.lock().unwrap().take();
+    }
+    handle.set_toggle_checked(new);
 }
 
 fn activate(
@@ -91,14 +116,21 @@ fn activate(
     jiggler: &Arc<Mutex<Option<MouseJiggler>>>,
     enabled: &Arc<AtomicBool>,
     _mouse_mode: &Arc<AtomicBool>,
-) {
+    _handle: &tray::TrayHandle,
+) -> bool {
     match cfg.mode {
         Mode::Api => {
-            *guard.lock().unwrap() = InhibitGuard::acquire();
+            let g = InhibitGuard::acquire();
+            if g.is_none() {
+                return false;
+            }
+            *guard.lock().unwrap() = g;
+            true
         }
         Mode::Mouse => {
             let interval = cfg.interval_secs;
             *jiggler.lock().unwrap() = Some(MouseJiggler::start(interval, enabled.clone()));
+            true
         }
     }
 }

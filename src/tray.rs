@@ -5,15 +5,20 @@ use tray_icon::menu::{
 use tray_icon::{Icon, TrayIcon, TrayIconBuilder};
 
 pub struct TrayHandle {
-    _tray: TrayIcon,
-    toggle: CheckMenuItem,
-    mode_item: MenuItem,
-    autostart: CheckMenuItem,
+    pub tray: TrayIcon,
+    pub toggle: CheckMenuItem,
+    pub mode_item: MenuItem,
+    pub autostart: CheckMenuItem,
 }
 
 impl TrayHandle {
     pub fn set_toggle_checked(&self, checked: bool) {
         self.toggle.set_checked(checked);
+        let _ = self.tray.set_tooltip(Some(if checked {
+            "Keep Awake — Enabled"
+        } else {
+            "Keep Awake — Disabled"
+        }));
     }
 
     pub fn set_mode_label(&self, mode: &Mode) {
@@ -26,7 +31,6 @@ impl TrayHandle {
     pub fn set_autostart_checked(&self, checked: bool) {
         self.autostart.set_checked(checked);
     }
-
 }
 
 pub fn setup(config: &Config) -> (TrayHandle, MenuId, MenuId, MenuId, MenuId) {
@@ -59,7 +63,11 @@ pub fn setup(config: &Config) -> (TrayHandle, MenuId, MenuId, MenuId, MenuId) {
     let tray = TrayIconBuilder::new()
         .with_menu(Box::new(menu))
         .with_icon(icon)
-        .with_tooltip("Keep Awake")
+        .with_tooltip(if config.enabled {
+            "Keep Awake — Enabled"
+        } else {
+            "Keep Awake — Disabled"
+        })
         .build()
         .expect("Failed to create tray icon");
 
@@ -67,7 +75,7 @@ pub fn setup(config: &Config) -> (TrayHandle, MenuId, MenuId, MenuId, MenuId) {
     let mode_id = mode_item.id().clone();
     let autostart_id = autostart.id().clone();
     let quit_id = quit.id().clone();
-    let handle = TrayHandle { _tray: tray, toggle, mode_item, autostart };
+    let handle = TrayHandle { tray, toggle, mode_item, autostart };
 
     (handle, toggle_id, mode_id, autostart_id, quit_id)
 }
@@ -87,15 +95,22 @@ fn make_icon() -> Icon {
             let idx = ((y * size + x) * 4) as usize;
 
             if dist <= r as f64 {
-                let alpha = if dist > r as f64 - 1.0 {
+                let edge = dist > r as f64 - 1.5;
+                let alpha = if edge {
                     ((r as f64 - dist).max(0.0) * 255.0) as u8
                 } else {
                     255
                 };
-                rgba[idx] = 76;
-                rgba[idx + 1] = 175;
-                rgba[idx + 2] = 80;
-                rgba[idx + 3] = alpha;
+                if dist < 5.0 {
+                    rgba[idx + 3] = alpha;
+                } else if dist < r as f64 - 2.0 {
+                    rgba[idx] = 76;
+                    rgba[idx + 1] = 175;
+                    rgba[idx + 2] = 80;
+                    rgba[idx + 3] = alpha;
+                } else {
+                    rgba[idx + 3] = 0;
+                }
             } else {
                 rgba[idx + 3] = 0;
             }
